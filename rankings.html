@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTM - Official Rankings</title>
+    <style>
+        body { font-family: sans-serif; background-color: #121212; color: #fff; margin: 0; padding: 20px; text-align: center; }
+        .header { font-size: 26px; font-weight: bold; color: #ffca28; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; text-transform: uppercase; letter-spacing: 2px;}
+        select { width: 100%; max-width: 400px; padding: 12px; margin-bottom: 20px; border-radius: 6px; border: none; background: #333; color: white; font-size: 16px; font-weight: bold; }
+        
+        .rank-table { width: 100%; max-width: 600px; margin: 0 auto; background: #1e1e1e; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .row { display: flex; justify-content: space-between; padding: 15px; border-bottom: 1px solid #333; }
+        .row.header-row { background: #28a745; color: #000; font-weight: bold; }
+        .row:nth-child(even) { background: #222; }
+        
+        .col-rank { width: 15%; font-weight: bold; color: #ffca28; font-size: 18px;}
+        .col-name { width: 50%; text-align: left; font-size: 16px;}
+        .col-pts { width: 35%; text-align: right; color: #17a2b8; font-weight: bold; font-size: 16px;}
+
+        .btn-home { background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <button class="btn-home" onclick="location.href='/admin'">⬅ Back to Controller</button>
+
+    <div class="header">📊 BWF World Rankings</div>
+
+    <select id="cat-select" onchange="loadRankings()">
+        <option value="">Select Category...</option>
+    </select>
+
+    <div class="rank-table" id="rankings-container" style="display:none;">
+        <div class="row header-row">
+            <div class="col-rank">Rank</div>
+            <div class="col-name">Player Name</div>
+            <div class="col-pts">Points</div>
+        </div>
+        <div id="rankings-list"></div>
+    </div>
+
+    <script>
+        fetch('/api/get_categories').then(res => res.json()).then(cats => {
+            let select = document.getElementById('cat-select');
+            cats.forEach(c => select.innerHTML += `<option value="${c}">${c}</option>`);
+        });
+
+        function loadRankings() {
+            let cat = document.getElementById('cat-select').value;
+            if(!cat) { document.getElementById('rankings-container').style.display = 'none'; return; }
+
+            fetch(`/api/get_rankings/${cat}`).then(res => res.json()).then(data => {
+                document.getElementById('rankings-container').style.display = 'block';
+                let listHtml = "";
+                if(data.length === 0) { listHtml = '<div style="padding:20px; color:#aaa;">No rankings available yet.</div>'; }
+                else {
+                    data.forEach(r => {
+                        let rankIcon = r.rank === 1 ? "🥇 " : (r.rank === 2 ? "🥈 " : (r.rank === 3 ? "🥉 " : r.rank + ". "));
+                        listHtml += `
+                            <div class="row">
+                                <div class="col-rank">${rankIcon}</div>
+                                <div class="col-name">${r.name} <br><span style="font-size:12px; color:#888;">Played: ${r.played}</span></div>
+                                <div class="col-pts">${r.points} pts</div>
+                            </div>
+                        `;
+                    });
+                }
+                document.getElementById('rankings-list').innerHTML = listHtml;
+            });
+        }
+    </script>
+</body>
+</html>
