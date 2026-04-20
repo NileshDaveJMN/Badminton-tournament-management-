@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTM - M&Q Seeding Panel</title>
+    <style>
+        body { font-family: sans-serif; background-color: #121212; color: #fff; margin: 0; padding: 20px; }
+        .header { text-align: center; font-size: 24px; font-weight: bold; color: #ffca28; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .control-panel { background: #1e1e1e; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; gap: 10px; }
+        select, button, input { padding: 10px; border-radius: 5px; border: none; font-size: 16px; font-weight: bold; }
+        select { flex: 1; background: #333; color: white; }
+        button { background: #007bff; color: white; cursor: pointer; }
+        .btn-success { background: #28a745; width: 100%; margin-top: 20px; font-size: 18px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #1e1e1e; }
+        th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #333; }
+        th { background: #333; color: #ffca28; }
+        .input-mini { width: 50px; text-align: center; background: #222; color: #fff; border: 1px solid #444; }
+        .select-mq { background: #222; color: #fff; border: 1px solid #444; padding: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">🏆 M&Q Seeding Controller</div>
+
+    <div class="control-panel">
+        <select id="cat-select">
+            <option value="">Select Category...</option>
+        </select>
+        <button onclick="loadPlayers()">Load</button>
+    </div>
+
+    <div id="table-container" style="display:none; overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>State/DOB</th>
+                    <th>Rank</th>
+                    <th>M / Q</th>
+                    <th>Seed</th>
+                </tr>
+            </thead>
+            <tbody id="player-list">
+                </tbody>
+        </table>
+        <button class="btn-success" onclick="saveSeeding()">💾 Save All Changes</button>
+    </div>
+
+    <script>
+        // Categories लोड करो
+        fetch('/api/get_categories').then(res => res.json()).then(cats => {
+            let select = document.getElementById('cat-select');
+            cats.forEach(c => select.innerHTML += `<option value="${c}">${c}</option>`);
+        });
+
+        function loadPlayers() {
+            let cat = document.getElementById('cat-select').value;
+            if(!cat) return alert("Please select a category");
+
+            fetch(`/api/get_entries/${cat}`).then(res => res.json()).then(data => {
+                let tbody = document.getElementById('player-list');
+                tbody.innerHTML = '';
+                
+                data.forEach(p => {
+                    let tr = document.createElement('tr');
+                    tr.className = 'player-row';
+                    tr.dataset.id = p.id;
+                    tr.innerHTML = `
+                        <td><b>${p.name}</b></td>
+                        <td style="font-size:12px; color:#aaa;">${p.state || '-'} <br> ${p.dob || '-'}</td>
+                        <td><input type="number" class="input-mini p-rank" value="${p.rank}"></td>
+                        <td>
+                            <select class="select-mq p-draw">
+                                <option value="Main" ${p.draw_type === 'Main' ? 'selected' : ''}>Main</option>
+                                <option value="Qual" ${p.draw_type === 'Qual' ? 'selected' : ''}>Qual</option>
+                            </select>
+                        </td>
+                        <td><input type="number" class="input-mini p-seed" value="${p.seed}"></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                document.getElementById('table-container').style.display = 'block';
+            });
+        }
+
+        function saveSeeding() {
+            let rows = document.querySelectorAll('.player-row');
+            let updates = [];
+            
+            rows.forEach(row => {
+                updates.push({
+                    id: row.dataset.id,
+                    rank: row.querySelector('.p-rank').value,
+                    draw_type: row.querySelector('.p-draw').value,
+                    seed: row.querySelector('.p-seed').value
+                });
+            });
+
+            fetch('/api/update_mq_status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ updates: updates })
+            }).then(res => res.json()).then(data => {
+                if(data.success) {
+                    alert("✅ Seeding & M/Q Saved Successfully!");
+                } else {
+                    alert("❌ Error saving data.");
+                }
+            });
+        }
+    </script>
+</body>
+</html>
