@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTM - Live Scoreboard</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #000; color: #fff; margin: 0; padding: 20px; overflow-x: hidden; }
+        .header { text-align: center; font-size: 30px; font-weight: bold; color: #ffca28; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 30px; text-transform: uppercase; letter-spacing: 2px; }
+        
+        .courts-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-bottom: 40px; }
+        .court-card { background: #111; border: 2px solid #28a745; border-radius: 15px; width: 320px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(40,167,69,0.2); }
+        .court-title { background: #28a745; color: #000; padding: 5px 15px; font-weight: bold; border-radius: 5px; display: inline-block; margin-bottom: 15px; font-size: 18px; }
+        .history-box { color: #aaa; font-size: 16px; margin-bottom: 10px; font-weight: bold; height: 24px; }
+        .player-name { font-size: 24px; font-weight: bold; margin: 5px 0; }
+        .vs { color: #ffca28; font-size: 14px; font-weight: bold; margin: 5px 0; }
+        .score-board { font-size: 55px; font-weight: bold; color: #fff; margin-top: 10px; letter-spacing: 8px; border-top: 1px solid #333; padding-top: 10px; }
+        
+        .results-section { background: #111; padding: 20px; border-radius: 15px; max-width: 800px; margin: 0 auto; border-top: 3px solid #ffca28; }
+        .results-title { color: #ffca28; font-size: 22px; margin-bottom: 15px; text-align: center; }
+        .result-row { padding: 12px; border-bottom: 1px solid #333; font-size: 18px; display: flex; justify-content: space-between; }
+        .winner { color: #28a745; font-weight: bold; }
+
+        /* 🏆 CHAMPION ANIMATION STYLES 🏆 */
+        #champion-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95); z-index: 9999;
+            display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+            animation: fadeIn 1s;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .champ-title { font-size: 50px; color: #ffca28; text-transform: uppercase; letter-spacing: 10px; margin: 0; text-shadow: 0 0 20px #ffca28; animation: pop 1s infinite alternate; }
+        .champ-cat { font-size: 30px; color: #fff; margin-top: 10px; }
+        .champ-name { font-size: 90px; font-weight: bold; color: #28a745; margin: 20px 0; text-shadow: 0 0 40px #28a745; line-height: 1; text-transform: uppercase;}
+        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.05); } }
+    </style>
+</head>
+<body>
+
+    <div id="champion-overlay">
+        <h1 class="champ-title">👑 Champion 👑</h1>
+        <div class="champ-cat" id="champ-cat">[WS]</div>
+        <div class="champ-name" id="champ-name">Player Name</div>
+        <div style="font-size:25px; color:#aaa;">Has won the Tournament! 🎉</div>
+    </div>
+
+    <div class="header">🏸 Live Tournament Scoreboard</div>
+
+    <div class="courts-container" id="live-courts">
+        <h2 style="color: #666;">Loading Live Action...</h2>
+    </div>
+
+    <div class="results-section">
+        <div class="results-title">🏆 Latest Results</div>
+        <div id="recent-results">
+            <p style="text-align:center; color:#666;">Waiting for results...</p>
+        </div>
+    </div>
+
+    <script>
+        let lastCelebratedMatch = null;
+
+        function triggerChampionCelebration(cat, name) {
+            document.getElementById('champ-cat').innerText = `Category: ${cat}`;
+            document.getElementById('champ-name').innerText = name;
+            let overlay = document.getElementById('champion-overlay');
+            overlay.style.display = 'flex';
+            
+            // 8 सेकंड बाद एनीमेशन अपने आप गायब हो जाएगा
+            setTimeout(() => { overlay.style.display = 'none'; }, 8000);
+        }
+
+        function updatePublicDisplay() {
+            fetch('/api/admin_data', { cache: "no-store" })
+            .then(res => res.json())
+            .then(data => {
+                if(data.active && data.active.length > 0) {
+                    let courtsHtml = data.active.map(m => {
+                        let historyHtml = m.history ? `<div class="history-box">Past Sets: (${m.history})</div>` : '<div class="history-box"></div>';
+                        return `
+                        <div class="court-card">
+                            <div class="court-title">Court ${m.court} - ${m.category}</div>
+                            ${historyHtml}
+                            <div class="player-name">${m.p1}</div>
+                            <div class="vs">VS</div>
+                            <div class="player-name">${m.p2}</div>
+                            <div class="score-board">${m.s1} - ${m.s2}</div>
+                        </div>
+                    `}).join('');
+                    document.getElementById('live-courts').innerHTML = courtsHtml;
+                } else {
+                    document.getElementById('live-courts').innerHTML = '<h2 style="color: #666; width:100%; text-align:center;">All Courts are Free</h2>';
+                }
+            });
+
+            fetch('/api/get_results', { cache: "no-store" })
+            .then(res => res.json())
+            .then(data => {
+                if(data && data.length > 0) {
+                    // 🚀 CELEBRATION CHECKER
+                    let latestMatch = data[0]; // सबसे ताज़ा मैच
+                    if(latestMatch.is_champion && latestMatch.match_id !== lastCelebratedMatch) {
+                        triggerChampionCelebration(latestMatch.category, latestMatch.winner_name);
+                        lastCelebratedMatch = latestMatch.match_id; // ताकि बार-बार सेलिब्रेट न हो
+                    }
+
+                    let resultsHtml = data.slice(0, 5).map(r => `
+                        <div class="result-row">
+                            <span>
+                                ${r.is_champion ? '👑' : ''} 
+                                <b style="color:#ffca28">[${r.category}]</b> 
+                                <span class="winner">${r.winner_name}</span> beat ${r.loser_name}
+                            </span>
+                            <span style="color:#aaa; font-weight:bold;">${r.full_score}</span>
+                        </div>
+                    `).join('');
+                    document.getElementById('recent-results').innerHTML = resultsHtml;
+                } else {
+                    document.getElementById('recent-results').innerHTML = '<p style="text-align:center; color:#666;">No results yet.</p>';
+                }
+            });
+        }
+
+        setInterval(updatePublicDisplay, 3000);
+        updatePublicDisplay();
+    </script>
+</body>
+</html>
