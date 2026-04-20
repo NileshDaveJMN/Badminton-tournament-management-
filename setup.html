@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTM - Tournament Setup</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #121212; color: #fff; margin: 0; padding: 20px; }
+        .header { background-color: #1e1e1e; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; border-radius: 10px; border-bottom: 4px solid #ffca28; margin-bottom: 20px; }
+        
+        .card { background-color: #1e1e1e; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .card-title { font-size: 18px; color: #ffca28; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .info-box { background: #2a2a2a; padding: 15px; border-radius: 8px; font-size: 14px; color: #aaa; margin-bottom: 15px; border-left: 4px solid #007bff; }
+        
+        input[type="file"] { background: #222; padding: 10px; border-radius: 5px; border: 1px solid #444; color: white; width: 100%; box-sizing: border-box; margin-bottom: 15px; }
+        
+        .btn-upload { background-color: #28a745; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; }
+        .btn-upload:hover { background-color: #218838; }
+
+        .table-preview { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        .table-preview th, .table-preview td { border: 1px solid #444; padding: 8px; text-align: left; }
+        .table-preview th { background-color: #333; color: #ffca28; }
+    </style>
+</head>
+<body>
+
+    <div class="header">⚙️ Pre-Tournament Setup</div>
+
+    <div class="card">
+        <div class="card-title">📁 Upload Player Entries (CSV)</div>
+        
+        <div class="info-box">
+            <b>CSV File Format Requirement:</b><br>
+            Please ensure your Excel/CSV file has the following column headers exactly in the first row:<br><br>
+            <table class="table-preview">
+                <tr><th>Name</th><th>Gender</th><th>State</th><th>Category</th><th>Partner</th></tr>
+                <tr><td>Ravi Kumar</td><td>Men</td><td>Gujarat</td><td>MS</td><td></td></tr>
+                <tr><td>Dev Jani</td><td>Men</td><td>Gujarat</td><td>MD</td><td>Rahul Sharma</td></tr>
+                <tr><td>Aditi</td><td>Women</td><td>Delhi</td><td>WS</td><td></td></tr>
+            </table>
+        </div>
+
+        <input type="file" id="csvFile" accept=".csv">
+        <button class="btn-upload" onclick="uploadCSV()">🚀 Upload & Process Entries</button>
+        <div id="statusMsg" style="margin-top:15px; font-weight:bold; color:#ffca28; text-align:center;"></div>
+    </div>
+
+    <div style="text-align:center; margin-top:30px;">
+        <a href="/admin" style="color:#007bff; text-decoration:none; font-size:18px;">➡️ Go to Live Admin Controller</a>
+    </div>
+
+    <script>
+        function uploadCSV() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            const msg = document.getElementById('statusMsg');
+
+            if (!file) {
+                msg.style.color = '#dc3545';
+                msg.innerText = "⚠️ Please select a CSV file first!";
+                return;
+            }
+
+            msg.style.color = '#ffca28';
+            msg.innerText = "⏳ Processing file...";
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/upload_csv', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    msg.style.color = '#28a745';
+                    msg.innerText = `✅ Successfully registered ${data.count} players!`;
+                    fileInput.value = ''; // clear input
+                } else {
+                    msg.style.color = '#dc3545';
+                    msg.innerText = `❌ Error: ${data.error}`;
+                }
+            })
+            .catch(error => {
+                msg.style.color = '#dc3545';
+                msg.innerText = "❌ Network Error during upload.";
+                console.error(error);
+            });
+        }
+    </script>
+</body>
+</html>
