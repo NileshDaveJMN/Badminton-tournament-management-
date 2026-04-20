@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTM - Draw Generator</title>
+    <style>
+        body { font-family: sans-serif; background-color: #121212; color: #fff; margin: 0; padding: 20px; text-align: center; }
+        .header { font-size: 24px; font-weight: bold; color: #ffca28; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .control-panel { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-bottom: 20px; display: inline-block; width: 100%; max-width: 400px; }
+        select { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: none; background: #333; color: white; font-size: 16px; font-weight: bold; }
+        .btn-main { background: #28a745; color: white; border: none; padding: 12px; width: 100%; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+        .btn-qual { background: #17a2b8; color: white; border: none; padding: 12px; width: 100%; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn-main:hover { background: #218838; }
+        .btn-qual:hover { background: #138496; }
+        .output { margin-top: 20px; text-align: left; background: #222; padding: 15px; border-radius: 8px; display: none; }
+        .match-item { padding: 8px; border-bottom: 1px solid #444; }
+    </style>
+</head>
+<body>
+
+    <div class="header">🎲 BWF Draw Generator</div>
+
+    <div class="control-panel">
+        <select id="cat-select">
+            <option value="">Select Category...</option>
+        </select>
+        
+        <button class="btn-qual" onclick="generateDraw('Qual')">🔥 Generate Qualification Draw</button>
+        <button class="btn-main" onclick="generateDraw('Main')">🏆 Generate Main Draw</button>
+    </div>
+
+    <div id="output-box" class="output">
+        <h3 id="draw-title" style="color: #ffca28; margin-top: 0;"></h3>
+        <div id="match-list"></div>
+    </div>
+
+    <script>
+        // Categories लोड करो
+        fetch('/api/get_categories').then(res => res.json()).then(cats => {
+            let select = document.getElementById('cat-select');
+            cats.forEach(c => select.innerHTML += `<option value="${c}">${c}</option>`);
+        });
+
+        // ड्रा बनाने का फंक्शन (Main या Qual)
+        function generateDraw(drawType) {
+            let cat = document.getElementById('cat-select').value;
+            if(!cat) return alert("Please select a category first!");
+
+            if(!confirm(`Are you sure you want to generate the ${drawType} Draw for ${cat}?`)) return;
+
+            fetch('/api/generate_draw', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ category: cat, draw_type: drawType }) // 🚀 Backend ko batao kaunsa draw chahiye
+            }).then(res => res.json()).then(data => {
+                if(data.success) {
+                    document.getElementById('output-box').style.display = 'block';
+                    document.getElementById('draw-title').innerText = `✅ ${drawType} Draw Matches Created:`;
+                    let listHTML = "";
+                    data.matches.forEach((m, i) => {
+                        listHTML += `<div class="match-item"><b>Match ${i+1}:</b> ${m}</div>`;
+                    });
+                    document.getElementById('match-list').innerHTML = listHTML;
+                } else {
+                    alert("❌ Error: " + data.error);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
