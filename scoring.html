@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BTM - Pro Umpire Tool</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #121212; color: #fff; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .header { background-color: #1e1e1e; padding: 6px 12px; font-size: 12px; border-bottom: 2px solid #333; display: flex; justify-content: space-between; flex-shrink: 0; }
+        .game-status { background-color: #2c2c2c; padding: 4px; text-align: center; font-size: 14px; font-weight: bold; color: #28a745; border-bottom: 2px solid #28a745; flex-shrink: 0; }
+        
+        #setup-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #121212; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 15px; box-sizing: border-box; }
+        .setup-box { background: #1e1e1e; padding: 20px; border-radius: 12px; width: 95%; max-width: 350px; text-align: center; border: 1px solid #333; }
+        .toss-btn { width: 100%; padding: 12px; margin: 5px 0; background: #333; color: white; border: 1px solid #444; border-radius: 8px; font-size: 16px; font-weight: bold; }
+        .toss-btn.active { background: #28a745 !important; border-color: #28a745 !important; }
+
+        .court-area { display: flex; flex: 1; overflow: hidden; align-items: flex-start; }
+        .side { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 15px 5px; border-right: 1px solid #333; }
+        .p-name { font-size: 18px; font-weight: bold; color: #ffca28; margin-top: 5px; height: 25px; text-align: center; }
+        .score-val { font-size: 90px; font-weight: bold; color: #fff; margin: 0; line-height: 1; }
+        .btn-add { background: linear-gradient(135deg, #28a745, #218838); color: white; border: none; width: 90%; padding: 20px 0; font-size: 30px; font-weight: bold; border-radius: 15px; margin-top: 10px; cursor: pointer; }
+
+        .bottom-bar { background-color: #1a1a1a; padding: 12px; display: flex; flex-direction: row; align-items: center; gap: 10px; border-top: 1px solid #333; flex-shrink: 0; }
+        .btn-control { flex: 1; padding: 15px; border-radius: 10px; font-weight: bold; font-size: 14px; border: none; cursor: pointer; }
+        .btn-undo { background-color: #dc3545; color: white; }
+        .btn-next { background-color: #ffca28; color: #000; }
+        #sys-msg { color: #ffca28; font-size: 12px; font-weight: bold; text-align: center; margin-bottom: 5px; }
+
+        #waiting-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #121212; z-index: 2000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .pulse-text { color: #ffca28; font-size: 16px; font-weight: bold; margin-top: 20px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+    </style>
+</head>
+<body>
+
+    <div id="waiting-screen">
+        <h1 style="color: #28a745; margin: 0;">Court <span id="wait-c-num">?</span></h1>
+        <h3 style="color: #aaa; margin: 5px 0;">Available / Free</h3>
+        <div class="pulse-text">⏳ Waiting for Match Assignment...</div>
+    </div>
+
+    <div id="setup-screen">
+        <div class="setup-box">
+            <div style="color:#ffca28; margin-bottom:10px; font-weight:bold;">🏸 Who won the Toss?</div>
+            <div style="display:flex; gap:10px;">
+                <button class="toss-btn" id="toss-left" onclick="setToss('left')" style="flex:1;">...</button>
+                <button class="toss-btn" id="toss-right" onclick="setToss('right')" style="flex:1;">...</button>
+            </div>
+            <div id="choice-area" style="display:none; margin-top:20px;">
+                <div style="color:#ffca28; margin-bottom:10px; font-weight:bold;">Winner's Choice:</div>
+                <div style="display:flex; gap:10px;">
+                    <button class="toss-btn active" id="choice-serve" onclick="setChoice('serve')" style="flex:1;">Serve</button>
+                    <button class="toss-btn" id="choice-receive" onclick="setChoice('receive')" style="flex:1;">Receive</button>
+                </div>
+                <button class="toss-btn active" style="background:#007bff; margin-top:15px;" onclick="confirmTossAndStart()">🚀 START MATCH</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header">
+        <div id="c-num">Court ?</div>
+        <div id="c-cat" style="color:#ffca28">🏸 Loading...</div>
+        <div id="m-id">#ID</div>
+    </div>
+
+    <div class="game-status"><span id="g-label">Game 1</span> | <span id="sets-sum" style="color:#fff;">Sets: 0-0</span> | <span id="history-display" style="color:#aaa; font-size:11px;"></span></div>
+
+    <div id="scoring-screen">
+        <div class="court-area">
+            <div class="side">
+                <div class="p-name" id="name-l">...</div>
+                <div id="serve-l" style="visibility:hidden; font-size: 20px;">🏸</div>
+                <div class="score-val" id="score-l">0</div>
+                <button class="btn-add" id="bl" onclick="addPoint('left')">+ 1</button>
+            </div>
+            <div class="side">
+                <div class="p-name" id="name-r">...</div>
+                <div id="serve-r" style="visibility:hidden; font-size: 20px;">🏸</div>
+                <div class="score-val" id="score-r">0</div>
+                <button class="btn-add" id="br" onclick="addPoint('right')">+ 1</button>
+            </div>
+        </div>
+
+        <div style="background:#1a1a1a;"><div id="sys-msg">Match Ready</div></div>
+        <div class="bottom-bar">
+            <button class="btn-control btn-undo" id="undo-btn" onclick="undo()" style="display:none;">↩ Undo</button>
+            <button class="btn-control btn-next" id="next-btn" onclick="handleNextStep()" style="display:none;">NEXT</button>
+        </div>
+    </div>
+
+    <script>
+        let matchId = null;
+        const courtNum = window.location.pathname.split('/').pop();
+
+        let state = {
+            players: { left: "...", right: "..." },
+            scores: { left: 0, right: 0 },
+            setsWon: { t1: 0, t2: 0 }, 
+            pastSets: [], 
+            history: [],
+            currentGame: 1,
+            server: 'left',
+            tossWinner: null,
+            winnerChoice: 'serve',
+            isTeam1OnLeft: true,
+            intervalDone: false,
+            gameActive: false,
+            matchOver: false
+        };
+
+        function saveLocal() { localStorage.setItem(`btm_v13_court_${courtNum}`, JSON.stringify(state)); }
+        function loadLocal() { const saved = localStorage.getItem(`btm_v13_court_${courtNum}`); if (saved) { state = JSON.parse(saved); updateUI(); } }
+
+        function loadMatchData() {
+            fetch(`/api/court_match/${courtNum}`).then(res => res.json()).then(data => {
+                if(data.success) {
+                    document.getElementById('waiting-screen').style.display = 'none';
+                    if (matchId !== null && matchId != data.match_id) { localStorage.removeItem(`btm_v13_court_${courtNum}`); location.reload(); return; }
+                    if (matchId === null) { 
+                        matchId = data.match_id;
+                        state.players.left = data.team1; state.players.right = data.team2;
+                        document.getElementById('c-num').innerText = `Court ${courtNum}`;
+                        document.getElementById('c-cat').innerText = data.category;
+                        document.getElementById('m-id').innerText = `ID: ${matchId}`;
+                        updateUI();
+                    }
+                } else {
+                    matchId = null;
+                    document.getElementById('wait-c-num').innerText = courtNum;
+                    document.getElementById('waiting-screen').style.display = 'flex';
+                    setTimeout(loadMatchData, 3000); 
+                }
+            }).catch(err => setTimeout(loadMatchData, 3000));
+        }
+
+        function setToss(side) {
+            state.tossWinner = side;
+            document.getElementById('toss-left').classList.toggle('active', side === 'left');
+            document.getElementById('toss-right').classList.toggle('active', side === 'right');
+            document.getElementById('choice-area').style.display = 'block';
+        }
+
+        function setChoice(choice) {
+            state.winnerChoice = choice;
+            document.getElementById('choice-serve').classList.toggle('active', choice === 'serve');
+            document.getElementById('choice-receive').classList.toggle('active', choice === 'receive');
+        }
+
+        function confirmTossAndStart() {
+            if (!state.tossWinner) return alert("Select Toss Winner!");
+            state.server = (state.winnerChoice === 'serve') ? state.tossWinner : (state.tossWinner === 'left' ? 'right' : 'left');
+            state.gameActive = true;
+            state.scores = {left: 0, right: 0};
+            updateUI();
+        }
+
+                function updateUI() {
+            const setup = document.getElementById('setup-screen');
+            const nextBtn = document.getElementById('next-btn');
+            const undoBtn = document.getElementById('undo-btn');
+
+            document.getElementById('toss-left').innerText = state.players.left;
+            document.getElementById('toss-right').innerText = state.players.right;
+
+            const isNewMatch = state.scores.left === 0 && state.scores.right === 0 && state.setsWon.t1 === 0 && state.setsWon.t2 === 0;
+            setup.style.display = (!state.gameActive && isNewMatch && matchId !== null) ? 'flex' : 'none';
+            undoBtn.style.display = state.history.length > 0 ? 'block' : 'none';
+
+            const scoreMade = state.scores.left > 0 || state.scores.right > 0;
+            nextBtn.style.display = (!state.gameActive && scoreMade) ? 'block' : 'none';
+            if(!state.gameActive) nextBtn.innerText = state.matchOver ? "🏆 FINISH MATCH" : "🏸 START NEXT GAME";
+
+            document.getElementById('score-l').innerText = state.scores.left;
+            document.getElementById('score-r').innerText = state.scores.right;
+            document.getElementById('name-l').innerText = state.players.left;
+            document.getElementById('name-r').innerText = state.players.right;
+            document.getElementById('g-label').innerText = `Game ${state.currentGame}`;
+            
+            let setsLeft = state.isTeam1OnLeft ? state.setsWon.t1 : state.setsWon.t2;
+            let setsRight = state.isTeam1OnLeft ? state.setsWon.t2 : state.setsWon.t1;
+            document.getElementById('sets-sum').innerText = `Sets: ${setsLeft} - ${setsRight}`;
+            
+            // 🚀 THE MAGIC FIX: जो खिलाड़ी लेफ्ट में है, उसका स्कोर पहले दिखाओ!
+            let historyStr = state.pastSets.map(s => {
+                return state.isTeam1OnLeft ? `${s.t1}-${s.t2}` : `${s.t2}-${s.t1}`;
+            }).join(', ');
+            
+            document.getElementById('history-display').innerText = historyStr ? `(${historyStr})` : '';
+            
+            document.getElementById('serve-l').style.visibility = (state.gameActive && state.server === 'left') ? 'visible' : 'hidden';
+            document.getElementById('serve-r').style.visibility = (state.gameActive && state.server === 'right') ? 'visible' : 'hidden';
+            
+            document.getElementById('bl').disabled = document.getElementById('br').disabled = !state.gameActive;
+            saveLocal();
+        }
+
+
+        function addPoint(side) {
+            if (!state.gameActive) return;
+            state.history.push(JSON.parse(JSON.stringify({ scores: {...state.scores}, server: state.server, interval: state.intervalDone, sets: {...state.setsWon}, active: state.gameActive, pastSets: [...state.pastSets] })));
+            state.scores[side]++; state.server = side;
+            syncScore(); checkRules(); updateUI();
+        }
+
+        function syncScore() {
+            if(!matchId) return;
+            let t1 = state.isTeam1OnLeft ? state.scores.left : state.scores.right;
+            let t2 = state.isTeam1OnLeft ? state.scores.right : state.scores.left;
+            let historyStr = state.pastSets.map(s => `${s.t1}-${s.t2}`).join(', ');
+            
+            fetch(`/api/update_score/${matchId}`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ s1: t1, s2: t2, history: historyStr }) 
+            });
+        }
+
+        function checkRules() {
+            const max = Math.max(state.scores.left, state.scores.right);
+            if (!state.intervalDone && max === 11) {
+                state.intervalDone = true;
+                if(state.currentGame === 3) { alert("Interval: CHANGE ENDS!"); swapSidesInternal(); } else { alert("Interval! (60s)"); }
+            }
+            if (max >= 21 && (Math.abs(state.scores.left - state.scores.right) >= 2 || max === 30)) endGame();
+        }
+
+        function endGame() {
+            state.gameActive = false;
+            const leftWon = state.scores.left > state.scores.right;
+            const team1WonGame = state.isTeam1OnLeft ? leftWon : !leftWon;
+            
+            if (team1WonGame) state.setsWon.t1++; else state.setsWon.t2++;
+
+            if (state.setsWon.t1 === 2 || state.setsWon.t2 === 2) {
+                state.matchOver = true;
+                document.getElementById('sys-msg').innerText = "🏆 MATCH OVER";
+            } else {
+                document.getElementById('sys-msg').innerText = "Game Over";
+            }
+            updateUI();
+        }
+
+        function undo() { 
+            if (state.history.length > 0) { 
+                const last = state.history.pop(); 
+                state.scores = last.scores; state.server = last.server; 
+                state.intervalDone = last.interval; state.setsWon = last.sets; 
+                state.gameActive = last.active; state.matchOver = false;
+                state.pastSets = last.pastSets;
+                syncScore(); updateUI(); 
+            } 
+        }
+
+                async function handleNextStep() {
+            let t1Score = state.isTeam1OnLeft ? state.scores.left : state.scores.right;
+            let t2Score = state.isTeam1OnLeft ? state.scores.right : state.scores.left;
+
+            if (state.matchOver) { 
+                let historyStr = state.pastSets.map(s => `${s.t1}-${s.t2}`).join(', ');
+                await fetch(`/api/update_score/${matchId}`, { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ s1: t1Score, s2: t2Score, history: historyStr }) 
+                });
+                
+                await fetch(`/api/finish_match/${matchId}`, { method: 'POST' }); 
+                localStorage.removeItem(`btm_v13_court_${courtNum}`); 
+                location.reload(); 
+            } else { 
+                state.pastSets.push({ t1: t1Score, t2: t2Score });
+                state.currentGame++; state.scores = {left:0, right:0}; 
+                state.intervalDone = false; state.gameActive = true; state.history = []; 
+                
+                // 🚀 BWF RULE FIX: सर्विस जीतने वाले को दो।
+                // (चूँकि जीतने वाला आख़िरी पॉइंट लेता है, तो अभी सर्विस उसी के पास है। कोर्ट बदलने पर वह दूसरी तरफ जाएगा, इसलिए हम सर्विस को भी पलट रहे हैं)
+                state.server = (state.server === 'left') ? 'right' : 'left';
+                
+                swapSidesInternal(); updateUI(); 
+            }
+        }
+
+
+        function swapSidesInternal() {
+            const tempP = state.players.left; state.players.left = state.players.right; state.players.right = tempP;
+            const tempS = state.scores.left; state.scores.left = state.scores.right; state.scores.right = tempS;
+            state.isTeam1OnLeft = !state.isTeam1OnLeft; 
+            updateUI();
+        }
+
+        window.onload = () => { loadLocal(); loadMatchData(); };
+    </script>
+</body>
+</html>
