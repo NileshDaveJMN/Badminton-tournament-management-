@@ -5,7 +5,7 @@ import random
 import io
 import csv
 import math
-
+from flask import redirect
 def init_app(app):
 
         # --- 🔄 AUTO-ADVANCE LOGIC (The Brain) ---
@@ -48,20 +48,50 @@ def init_app(app):
 
 
     # --- 🌍 PAGE ROUTES ---
-    @app.route('/setup')
-    def setup_page(): return send_file('setup.html')
     @app.route('/')
     @app.route('/admin')
-    def admin(): return send_file('admin.html')
+    def admin(): 
+        # 1. Agar players hi nahi hain, toh seedha Setup par bhejo
+        if Player.query.count() == 0: return redirect('/setup')
+        # 2. Agar draws nahi bane hain, toh Draws page par bhejo
+        if Match.query.count() == 0: return redirect('/draws')
+        # 3. Sab theek hai toh Admin panel kholne do
+        return send_file('admin.html')
+
+    @app.route('/draws')
+    def draws_page(): 
+        # Bina player ke draw nahi ban sakta
+        if Player.query.count() == 0: return redirect('/setup')
+        return send_file('draws.html')
+
+    @app.route('/seeding')
+    def seeding_page(): 
+        # Bina player ke seeding nahi ho sakti
+        if Player.query.count() == 0: return redirect('/setup')
+        # 🚀 STRICT LOCK: Agar matches generate ho gaye, toh Seeding change nahi kar sakte!
+        if Match.query.count() > 0: return redirect('/admin') 
+        return send_file('seeding.html')
+
+    @app.route('/setup')
+    def setup_page(): 
+        # 🚀 STRICT LOCK: Agar tournament start ho chuka hai (koi match complete ho gaya), 
+        # toh naya CSV upload block kar do taaki data corrupt na ho.
+        if Match.query.filter_by(status="Completed").count() > 0: 
+            return redirect('/admin')
+        return send_file('setup.html')
+
     @app.route('/court/<int:court_num>')
-    def umpire(court_num): return send_file('scoring.html')
+    def umpire(court_num): 
+        # Bina draw bane umpire kya karega? Wapas bhejo.
+        if Match.query.count() == 0: return redirect('/draws')
+        return send_file('scoring.html')
+
     @app.route('/live')
     def live_scoreboard(): return send_file('public.html')
-    @app.route('/draws')
-    def draws_page(): return send_file('draws.html')
-    @app.route('/seeding')
-    def seeding_page(): return send_file('seeding.html')
+    @app.route('/report')
+    def report_page(): return send_file('report.html')
 
+    
     # --- ⚙️ SETUP & SEEDING API ---
     @app.route('/api/upload_csv', methods=['POST'])
     def upload_csv():
@@ -103,106 +133,114 @@ def init_app(app):
         except Exception as e:
             db.session.rollback()
             return jsonify({"success": False, "error": str(e)})
-
-    # --- 🎲 PRO BWF DRAW ENGINE (Even-Odd + Dummy Fix) ---
-        # --- 🎲 PRO BWF DRAW ENGINE (Even-Odd + Smart Bye Fix) ---
-    @app.route('/api/generate_draw', methods=['POST'])
+    @app.route('/api/generate_draw',         methods=['POST'])
     def generate_draw():
         try:
             category, raw_type = request.json.get('category'), request.json.get('draw_type', 'Main')
             is_qual = raw_type in ["Qual", "Qualification"]
             std_type = "Qualification" if is_qual else "Main"
             
+            # Duplicate Check
+            if Match.query.filter_by(category=category, draw_type=std_type).first():
+                return jsonify({"success": False, "error": f"Draw already generated for {category}!"})
+
             players = Player.query.filter(Player.category==category, Player.draw_type.in_(["Qual", "Qualification"] if is_qual else ["Main"])).all()
-            if len(players) < 2: return jsonify({"success": False, "error": "Not enough players!"})
+            if len(players) < 2: 
+                return jsonify({"success": False, "error": "Not enough players!"})
 
             actual_count = len(players)
             bracket_size = 2 ** math.ceil(math.log2(actual_count)) if actual_count > 2 else 2
             byes_needed = bracket_size - actual_count
             
-            # 1. Sort Seeded and Unseeded
-            seeded_players = sorted([p for p in players if p.seed > 0], key=lambda x: x.seed)
-            unseeded_players = [p for p in players if p.seed == 0]
-            random.shuffle(unseeded_players)
+            seeds = sorted([p for p in players if p.seed > 0], key=lambda x: x.seed)
+            unseeded = [p for p in players if p.seed == 0]
+            random.shuffle(unseeded)
 
-            dummy_players = []
-            qual_count = Player.query.filter(Player.category==category, Player.draw_type.in_(["Qual", "Qualification"])).count()
-            
-            # 🚀 THE FIX: Agar Qualification mein koi nahi hai, toh target_qualifiers ZERO (0) hoga!
-            if qual_count == 0:
-                target_qualifiers = 0
-            else:
-                target_qualifiers = qual_count // 2 if qual_count >= 2 else 1
-            
-            for i in range(byes_needed):
-                d_name = f"Bye {i+1}" if is_qual else (f"Qualifier {i+1}" if i < target_qualifiers else f"Bye {i+1}")
-                dp = Player(name=d_name, category=category, draw_type="Dummy")
-                db.session.add(dp)
-                dummy_players.append(dp)
-            db.session.flush()
-
-            # 2. THE EVEN-ODD MAGIC (Prevents Bye vs Bye)
             draw_slots = [None] * bracket_size
-            even_idx = list(range(0, bracket_size, 2))
-            odd_idx = list(range(1, bracket_size, 2))
-            
-            if len(seeded_players) >= 1: draw_slots[even_idx[0]] = seeded_players.pop(0)
-            if len(seeded_players) >= 1: draw_slots[even_idx[-1]] = seeded_players.pop(0)
-            if len(seeded_players) >= 1: draw_slots[even_idx[len(even_idx)//2]] = seeded_players.pop(0)
-            if len(seeded_players) >= 1: draw_slots[even_idx[(len(even_idx)//2) - 1]] = seeded_players.pop(0)
-                
-            real_pool = seeded_players + unseeded_players
-            for i in even_idx:
-                if draw_slots[i] is None and real_pool: draw_slots[i] = real_pool.pop(0)
-                    
-            odd_pool = dummy_players + real_pool
-            for i in odd_idx:
-                if draw_slots[i] is None and odd_pool: draw_slots[i] = odd_pool.pop(0)
+            N = bracket_size
 
-            # 3. Start Number Logic
+            # 🚀 1. PROFESSIONAL SEED SLOTS (National Standard)
+            seed_slots = {
+                1: 0,           # Match 1 Top
+                2: N-1,         # Last Match Bottom
+                3: N // 2,      # Match 9 Top (for 32)
+                4: (N // 2) - 1,# Match 8 Bottom (for 32)
+                5: N // 4,      # Match 5 Top
+                6: (3 * N // 4) - 1, # Match 12 Bottom
+                7: 3 * N // 4,  # Match 13 Top
+                8: (N // 4) - 1 # Match 4 Bottom
+            }
+
+            for p in seeds:
+                if p.seed in seed_slots:
+                    draw_slots[seed_slots[p.seed]] = p
+
+            # 🚀 2. PROFESSIONAL BYE PRIORITY
+            bye_priority_indices = []
+            for s_num in range(1, 9):
+                if s_num in seed_slots:
+                    idx = seed_slots[s_num]
+                    opp_idx = idx + 1 if idx % 2 == 0 else idx - 1
+                    bye_priority_indices.append(opp_idx)
+            
+            all_odds = [i for i in range(1, N, 2) if i not in bye_priority_indices]
+            bye_priority_indices.extend(all_odds)
+
+            # 🚀 3. QUALIFIER LOGIC FIX
+            qual_count = Player.query.filter(Player.category==category, Player.draw_type.in_(["Qual", "Qualification"])).count()
+            target_quals = 0
+            if not is_qual and qual_count > 0:
+                target_quals = max(1, qual_count // 2)
+
+            for i in range(byes_needed):
+                idx = bye_priority_indices[i]
+                d_name = f"Bye {i+1}" if is_qual else (f"Qualifier {i+1}" if i < target_quals else f"Bye {i+1}")
+                dp = Player(name=d_name, category=category, draw_type="Dummy")
+                db.session.add(dp); db.session.flush()
+                draw_slots[idx] = dp
+
+            # 🚀 4. FILL THE REST
+            remaining_seeds = [s for s in seeds if s.seed > 8]
+            pool = remaining_seeds + unseeded
+            for i in range(N):
+                if draw_slots[i] is None and pool:
+                    draw_slots[i] = pool.pop(0)
+
+            # 🚀 5. GENERATE MATCHES & AUTO-ADVANCE
             last_match = Match.query.order_by(Match.match_no.desc()).first()
-            start_no = (last_match.match_no + 1) if last_match and last_match.match_no else 1
+            start_no = (last_match.match_no + 1) if last_match else 1
             
             r1_matches = []
-            for i in range(0, bracket_size, 2):
+            for i in range(0, N, 2):
                 p1, p2 = draw_slots[i], draw_slots[i+1]
                 t1, t2 = Team(player1_id=p1.id), Team(player1_id=p2.id)
                 db.session.add_all([t1, t2]); db.session.flush()
                 
                 status, winner_id = "Pending", None
-                if "Bye" in p1.name and "Bye" not in p2.name: status, winner_id = "Completed", p2.id
-                elif "Bye" in p2.name and "Bye" not in p1.name: status, winner_id = "Completed", p1.id
-                elif "Bye" in p1.name and "Bye" in p2.name: status, winner_id = "Completed", p1.id
+                if "Bye" in p1.name: status, winner_id = "Completed", p2.id
+                elif "Bye" in p2.name: status, winner_id = "Completed", p1.id
                 
                 m = Match(match_no=start_no, category=category, draw_type=std_type, team1_id=t1.id, team2_id=t2.id, status=status, winner_id=winner_id, round_no=1)
                 db.session.add(m); r1_matches.append(m); start_no += 1
 
-            # Generate Future Rounds
-            curr = r1_matches
-            r_num = 2
-            limit = target_qualifiers if is_qual else 1
-            if limit < 1: limit = 1 # Safety net for finals
-            
-            while len(curr) > limit:
+            # Future rounds logic
+            curr = r1_matches; r_num = 2
+            while len(curr) > (target_quals if is_qual else 1):
                 nxt = []
                 for i in range(0, len(curr), 2):
-                    t1, t2 = Team(player1_id=None), Team(player1_id=None)
-                    db.session.add_all([t1, t2]); db.session.flush()
-                    m = Match(match_no=start_no, category=category, draw_type=std_type, team1_id=t1.id, team2_id=t2.id, status="Pending", round_no=r_num)
+                    nt1, nt2 = Team(player1_id=None), Team(player1_id=None); db.session.add_all([nt1, nt2]); db.session.flush()
+                    m = Match(match_no=start_no, category=category, draw_type=std_type, team1_id=nt1.id, team2_id=nt2.id, status="Pending", round_no=r_num)
                     db.session.add(m); nxt.append(m); start_no += 1
                 curr = nxt; r_num += 1
             
             db.session.commit()
-            
-            # Auto-advance Dummies/Byes
             for m in r1_matches:
                 if m.status == "Completed": advance_winner(m.id, m.winner_id)
-                
             return jsonify({"success": True})
         except Exception as e:
-            print(f"DRAW ERROR: {str(e)}") 
-            return jsonify({"success": False, "error": str(e)})
+            db.session.rollback(); return jsonify({"success": False, "error": str(e)})
 
+       
     # --- 🏸 MATCH MANAGEMENT ---
     @app.route('/api/finish_match/<int:match_id>', methods=['POST'])
     
@@ -260,8 +298,10 @@ def init_app(app):
         active = []
         for m in Match.query.filter_by(status="On Court").all():
             t1, t2 = db.session.get(Team, m.team1_id), db.session.get(Team, m.team2_id)
-            p1 = db.session.get(Player, t1.player1_id) if t1 else None
-            p2 = db.session.get(Player, t2.player1_id) if t2 else None
+            # 🚀 FIX: Sirf tabhi Player load karo jab player1_id NULL na ho
+            p1 = db.session.get(Player, t1.player1_id) if (t1 and t1.player1_id is not None) else None
+            p2 = db.session.get(Player, t2.player1_id) if (t2 and t2.player1_id is not None) else None
+
             active.append({"id": m.id, "category": f"#{m.match_no} | {m.category}", "court": m.court_number, "p1": p1.name if p1 else "TBD", "p2": p2.name if p2 else "TBD", "s1": m.team1_score, "s2": m.team2_score})
         
         pending = []
@@ -269,7 +309,10 @@ def init_app(app):
         all_p.sort(key=lambda x: (0 if x.draw_type in ["Qual", "Qualification"] else 1, x.match_no))
         for m in all_p:
             t1, t2 = db.session.get(Team, m.team1_id), db.session.get(Team, m.team2_id)
-            p1, p2 = (db.session.get(Player, t1.player1_id) if t1 else None), (db.session.get(Player, t2.player1_id) if t2 else None)
+            # 🚀 FIX: Sirf tabhi Player fetch karo jab ID 'None' ना हो
+            p1 = db.session.get(Player, t1.player1_id) if (t1 and t1.player1_id is not None) else None
+            p2 = db.session.get(Player, t2.player1_id) if (t2 and t2.player1_id is not None) else None
+
             
             p1_n = p1.name if p1 else "TBD"
             p2_n = p2.name if p2 else "TBD"
@@ -315,6 +358,38 @@ def init_app(app):
                 res.append({"category": f"{m.category} - {m.draw_type}", "winner_name": w_n, "loser_name": l_n, "full_score": full_score})
         return jsonify(res)
 
+    @app.route('/api/get_all_results')
+    def get_all_results():
+        res = []
+        # order_by match_no kiya hai taaki Round 1 pehle dikhe aur Final sabse aakhri me
+        for m in Match.query.filter(Match.status=="Completed").order_by(Match.category, Match.match_no).all():
+            t1, t2 = db.session.get(Team, m.team1_id), db.session.get(Team, m.team2_id)
+            p1, p2 = db.session.get(Player, t1.player1_id), db.session.get(Player, t2.player1_id)
+            if p1 and p2:
+                winner_is_p1 = (m.winner_id == p1.id)
+                w_n, l_n = (p1.name, p2.name) if winner_is_p1 else (p2.name, p1.name)
+                
+                # 🚀 FIX: Agar loser ya winner koi "Bye" hai, toh usko PDF report me mat dikhao
+                if "Bye" in w_n or "Bye" in l_n:
+                    continue
+
+                hist_parts = []
+                if m.score_history:
+                    for game in m.score_history.split(','):
+                        pts = game.split('-')
+                        if len(pts) == 2:
+                            hist_parts.append(f"{pts[0].strip()}-{pts[1].strip()}" if winner_is_p1 else f"{pts[1].strip()}-{pts[0].strip()}")
+                hist_str = ", ".join(hist_parts)
+                s_win, s_loss = (m.team1_score, m.team2_score) if winner_is_p1 else (m.team2_score, m.team1_score)
+                
+                # Agar kisi wajah se match bina khele jeeta gaya hai (Walkover)
+                if s_win == 0 and s_loss == 0 and not hist_str:
+                    full_score = "W/O (Walkover)"
+                else:
+                    full_score = f"{hist_str}, {s_win}-{s_loss}" if hist_str else f"{s_win}-{s_loss}"
+                
+                res.append({"category": m.category, "draw": m.draw_type, "round": f"R{m.round_no}", "winner_name": w_n, "loser_name": l_n, "full_score": full_score})
+        return jsonify(res)
 
     @app.route('/api/assign_court/<int:match_id>', methods=['POST'])
     def assign_court(match_id):
@@ -344,4 +419,47 @@ def init_app(app):
     def get_rankings(category):
         rankings = Ranking.query.filter_by(category=category).order_by(Ranking.points.desc()).all()
         return jsonify([{"rank": i + 1, "name": r.player.name if r.player else "Unknown", "played": r.tournaments_played, "points": r.points} for i, r in enumerate(rankings)])
-      
+    # --- 🌳 BRACKET VIEWER PAGE & API ---
+    @app.route('/bracket')
+    def bracket_page(): 
+        return send_file('bracket.html')
+    @app.route('/api/get_bracket/<category>/<draw_type>')
+    def get_bracket(category, draw_type):
+        matches = Match.query.filter_by(category=category, draw_type=draw_type).order_by(Match.round_no, Match.match_no).all()
+        
+        rounds_dict = {}
+        for m in matches:
+            r = m.round_no
+            if r not in rounds_dict: rounds_dict[r] = []
+            
+            t1, t2 = db.session.get(Team, m.team1_id), db.session.get(Team, m.team2_id)
+            p1 = db.session.get(Player, t1.player1_id) if t1 and t1.player1_id else None
+            p2 = db.session.get(Player, t2.player1_id) if t2 and t2.player1_id else None
+            
+            # 🚀 FULL SCORE LOGIC: Yahan history banna zaroori hai
+            f_score = ""
+            if m.status == "Completed" and p1 and p2:
+                winner_is_p1 = (m.winner_id == p1.id)
+                hist_parts = []
+                if m.score_history:
+                    for game in m.score_history.split(','):
+                        pts = game.split('-')
+                        if len(pts) == 2:
+                            hist_parts.append(f"{pts[0].strip()}-{pts[1].strip()}" if winner_is_p1 else f"{pts[1].strip()}-{pts[0].strip()}")
+                hist_str = ", ".join(hist_parts)
+                s_win, s_loss = (m.team1_score, m.team2_score) if winner_is_p1 else (m.team2_score, m.team1_score)
+                f_score = f"{hist_str}, {s_win}-{s_loss}" if hist_str else f"{s_win}-{s_loss}"
+
+            rounds_dict[r].append({
+                "m_no": m.match_no,
+                "p1": p1.name if p1 else "TBD",
+                "p2": p2.name if p2 else "TBD",
+                "full_score": f_score, # 👈 Yeh line missing thi!
+                "w_id": m.winner_id,
+                "p1_id": p1.id if p1 else None,
+                "p2_id": p2.id if p2 else None,
+                "status": m.status
+            })
+        
+        bracket_data = [{"round": k, "matches": rounds_dict[k]} for k in sorted(rounds_dict.keys())]
+        return jsonify(bracket_data)
