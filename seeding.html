@@ -11,53 +11,71 @@
         select, button, input { padding: 10px; border-radius: 5px; border: none; font-size: 16px; font-weight: bold; }
         select { flex: 1; background: #333; color: white; }
         button { background: #007bff; color: white; cursor: pointer; }
-        .btn-success { background: #28a745; width: 100%; margin-top: 20px; font-size: 18px; }
+        .btn-success { background: #28a745; width: 100%; margin-top: 20px; font-size: 18px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);}
         
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #1e1e1e; }
-        th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #333; }
-        th { background: #333; color: #ffca28; }
-        .input-mini { width: 50px; text-align: center; background: #222; color: #fff; border: 1px solid #444; }
-        .select-mq { background: #222; color: #fff; border: 1px solid #444; padding: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #1e1e1e; border-radius: 8px; overflow: hidden;}
+        th, td { padding: 12px 8px; text-align: center; border-bottom: 1px solid #333; }
+        th { background: #333; color: #17a2b8; }
+        .input-mini { width: 60px; text-align: center; background: #222; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 4px;}
+        .select-mq { background: #222; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 4px;}
     </style>
 </head>
 <body>
 
     <div class="header">🏆 M&Q Seeding Controller</div>
 
+    <div style="margin-bottom: 15px; text-align: left;">
+        <button onclick="window.location.href='/setup'" style="background:#444; width:auto; padding:8px 15px;">⬅ Back to Setup</button>
+    </div>
+
     <div class="control-panel">
-        <select id="cat-select">
+        <select id="cat-select" onchange="loadPlayers()">
             <option value="">Select Category...</option>
         </select>
-        <button onclick="loadPlayers()">Load</button>
     </div>
 
     <div id="table-container" style="display:none; overflow-x: auto;">
         <table>
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>State/DOB</th>
+                    <th style="text-align: left;">Player Name</th>
                     <th>Rank</th>
                     <th>M / Q</th>
                     <th>Seed</th>
                 </tr>
             </thead>
             <tbody id="player-list">
-                </tbody>
+            </tbody>
         </table>
+        
         <button class="btn-success" onclick="saveSeeding()">💾 Save All Changes</button>
+        
+        <button id="btn-next-step" onclick="window.location.href='/draws'" style="background:#007bff; color:white; border:none; padding:15px; width:100%; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; margin-top:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display:none;">
+            ➡️ Next Step: Generate Draws
+        </button>
     </div>
 
     <script>
+        let unsavedChanges = false;
+
+        function markDirty() {
+            unsavedChanges = true;
+            document.getElementById('btn-next-step').style.display = 'none'; // Naya change aate hi next button chhupa do
+        }
+
         // Categories लोड करो
         fetch('/api/get_categories').then(res => res.json()).then(cats => {
             let select = document.getElementById('cat-select');
             cats.forEach(c => select.innerHTML += `<option value="${c}">${c}</option>`);
         });
 
+        // Dropdown सेलेक्ट होते ही प्लेयर लाओ
         function loadPlayers() {
             let cat = document.getElementById('cat-select').value;
-            if(!cat) return alert("Please select a category");
+            if(!cat) {
+                document.getElementById('table-container').style.display = 'none';
+                return;
+            }
 
             fetch(`/api/get_entries/${cat}`).then(res => res.json()).then(data => {
                 let tbody = document.getElementById('player-list');
@@ -68,20 +86,21 @@
                     tr.className = 'player-row';
                     tr.dataset.id = p.id;
                     tr.innerHTML = `
-                        <td><b>${p.name}</b></td>
-                        <td style="font-size:12px; color:#aaa;">${p.state || '-'} <br> ${p.dob || '-'}</td>
-                        <td><input type="number" class="input-mini p-rank" value="${p.rank}"></td>
+                        <td style="text-align: left; font-weight: bold; font-size: 15px;">${p.name}</td>
+                        <td><input type="number" class="input-mini p-rank" value="${p.rank}" readonly style="cursor:not-allowed; color:#888;"></td>
                         <td>
-                            <select class="select-mq p-draw">
+                            <select class="select-mq p-draw" onchange="markDirty()">
                                 <option value="Main" ${p.draw_type === 'Main' ? 'selected' : ''}>Main</option>
-                                <option value="Qual" ${p.draw_type === 'Qual' ? 'selected' : ''}>Qual</option>
+                                <option value="Qualification" ${p.draw_type === 'Qualification' || p.draw_type === 'Qual' ? 'selected' : ''}>Qualification</option>
                             </select>
                         </td>
-                        <td><input type="number" class="input-mini p-seed" value="${p.seed}"></td>
+                        <td><input type="number" class="input-mini p-seed" value="${p.seed}" onchange="markDirty()"></td>
                     `;
                     tbody.appendChild(tr);
                 });
+                
                 document.getElementById('table-container').style.display = 'block';
+                document.getElementById('btn-next-step').style.display = 'none'; 
             });
         }
 
@@ -92,12 +111,12 @@
             rows.forEach(row => {
                 updates.push({
                     id: row.dataset.id,
-                    rank: row.querySelector('.p-rank').value,
                     draw_type: row.querySelector('.p-draw').value,
                     seed: row.querySelector('.p-seed').value
                 });
             });
 
+            // 🚀 FIXED: Pure Fetch Request with valid JSON
             fetch('/api/update_mq_status', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -105,6 +124,8 @@
             }).then(res => res.json()).then(data => {
                 if(data.success) {
                     alert("✅ Seeding & M/Q Saved Successfully!");
+                    unsavedChanges = false;
+                    document.getElementById('btn-next-step').style.display = 'block'; // 🚀 UNLOCK NEXT STEP
                 } else {
                     alert("❌ Error saving data.");
                 }
