@@ -14,12 +14,17 @@
         .btn-main:hover { background: #218838; }
         .btn-qual:hover { background: #138496; }
         .output { margin-top: 20px; text-align: left; background: #222; padding: 15px; border-radius: 8px; display: none; }
-        .match-item { padding: 8px; border-bottom: 1px solid #444; }
     </style>
 </head>
 <body>
 
     <div class="header">🎲 BWF Draw Generator</div>
+    
+    <div style="text-align: left; margin-bottom: 10px;">
+        <button onclick="location.href='/admin'" style="background:#444; color:white; border:none; padding:8px 15px; border-radius:5px; cursor:pointer; font-weight:bold;">
+            ⬅ Back to Controller
+        </button>
+    </div>
 
     <div class="control-panel">
         <select id="cat-select">
@@ -27,11 +32,12 @@
         </select>
         
         <button class="btn-qual" onclick="generateDraw('Qual')">🔥 Generate Qualification Draw</button>
+        <br><br>
         <button class="btn-main" onclick="generateDraw('Main')">🏆 Generate Main Draw</button>
     </div>
 
     <div id="output-box" class="output">
-        <h3 id="draw-title" style="color: #ffca28; margin-top: 0;"></h3>
+        <h3 id="draw-title" style="color: #ffca28; margin-top: 0; text-align: center;"></h3>
         <div id="match-list"></div>
     </div>
 
@@ -42,29 +48,62 @@
             cats.forEach(c => select.innerHTML += `<option value="${c}">${c}</option>`);
         });
 
-        // ड्रा बनाने का फंक्शन (Main या Qual)
+        // ड्रा बनाने का फंक्शन
         function generateDraw(drawType) {
             let cat = document.getElementById('cat-select').value;
             if(!cat) return alert("Please select a category first!");
 
             if(!confirm(`Are you sure you want to generate the ${drawType} Draw for ${cat}?`)) return;
 
+            // लोडिंग स्टेट चालू करें
+            let btnQual = document.querySelector('.btn-qual');
+            let btnMain = document.querySelector('.btn-main');
+            btnQual.disabled = true;
+            btnMain.disabled = true;
+            btnQual.innerText = "⏳ Generating...";
+            btnMain.innerText = "⏳ Generating...";
+
             fetch('/api/generate_draw', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ category: cat, draw_type: drawType }) // 🚀 Backend ko batao kaunsa draw chahiye
+                body: JSON.stringify({ category: cat, draw_type: drawType }) 
             }).then(res => res.json()).then(data => {
+                
+                // बटन्स वापस नार्मल करें
+                btnQual.disabled = false;
+                btnMain.disabled = false;
+                btnQual.innerText = "🔥 Generate Qualification Draw";
+                btnMain.innerText = "🏆 Generate Main Draw";
+
+                // 🚀 FIXED: Duplicate Check yahan hona chahiye, fetch data aane ke baad!
+                if(!data.success && data.error && data.error.includes("already generated")) {
+                    alert(data.error);
+                    window.location.href = '/admin'; // Forcefully wapas controller par bhejo
+                    return;
+                }
+
                 if(data.success) {
                     document.getElementById('output-box').style.display = 'block';
-                    document.getElementById('draw-title').innerText = `✅ ${drawType} Draw Matches Created:`;
-                    let listHTML = "";
-                    data.matches.forEach((m, i) => {
-                        listHTML += `<div class="match-item"><b>Match ${i+1}:</b> ${m}</div>`;
-                    });
+                    document.getElementById('draw-title').innerText = `✅ ${cat} - ${drawType} Draw Generated Successfully!`;
+                    
+                    let listHTML = `
+                    <div style="text-align:center; padding: 10px; color: #28a745; font-size: 16px; font-weight: bold;">
+                        Matches have been scheduled and saved to the database.
+                    </div>
+                    <button onclick="window.location.href='/admin'" style="background:#dc3545; color:white; border:none; padding:15px; width:100%; border-radius:6px; font-size:18px; font-weight:bold; cursor:pointer; margin-top:20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+                        🚀 Start Tournament (Go to Controller)
+                    </button>`;
+                    
                     document.getElementById('match-list').innerHTML = listHTML;
                 } else {
                     alert("❌ Error: " + data.error);
                 }
+            }).catch(err => {
+                btnQual.disabled = false; btnMain.disabled = false;
+                btnQual.innerText = "🔥 Generate Qualification Draw";
+                btnMain.innerText = "🏆 Generate Main Draw";
+                alert("❌ Server Error!");
+                console.error(err);
             });
         }
     </script>
