@@ -25,9 +25,10 @@
 
     <div class="header">🏸 BTM <span>Controller</span></div>
 
-    <div class="card">
-        <button class="btn-warning" onclick="location.href='/setup'">⚙️ Go to Setup / CSV</button>
-        <button class="btn-primary" onclick="location.href='/draws'">🔀 Go to Draw Engine</button>
+    <div class="card" id="nav-buttons" style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn-warning" style="flex: 1;" onclick="location.href='/setup'">⚙️ 1. CSV Setup</button>
+        <button class="btn-primary" style="flex: 1; background: #17a2b8;" onclick="location.href='/seeding'">🏅 2. Seeding</button>
+        <button class="btn-primary" style="flex: 1;" onclick="location.href='/draws'">🔀 3. Draws</button>
     </div>
 
     <div class="card">
@@ -45,112 +46,114 @@
     </div>
 
     <div class="card" style="border-top: 4px solid #28a745;">
-        <div class="card-title">🏆 Recent Results</div>
-        <div id="results-container" style="max-height: 250px; overflow-y: auto;">
-            <p style="color:#666">Waiting for results...</p>
-        </div>
+    <div class="card-title">🏆 Recent Results</div>
+    <div id="results-container" style="max-height: 250px; overflow-y: auto;">
+        <p style="color:#666">Waiting for results...</p>
     </div>
+    
+    <button onclick="window.location.href='/rankings'" style="background:#28a745; color:white; border:none; padding:10px; width:100%; border-radius:6px; font-weight:bold; margin-top:10px; cursor:pointer;">📊 View Rankings</button>
+    <button onclick="window.open('/report', '_blank')" style="background:#dc3545; color:white; border:none; padding:10px; width:100%; border-radius:6px; font-weight:bold; margin-top:10px; cursor:pointer;">📄 Generate PDF Report</button>
+    <button onclick="window.location.href='/bracket'" style="background:#17a2b8; color:white; border:none; padding:10px; width:100%; border-radius:6px; font-weight:bold; margin-top:10px; cursor:pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">🌳 View Tournament Bracket (Tree)</button>
+</div>
+
+
     <script>
         function loadAdminData() {
-            fetch('/api/admin_data')
-                .then(r => r.json())
-                .then(data => {
-                    
-                    try {
-                        const activeDiv = document.getElementById('active-matches-container');
-                        if (activeDiv && data.active) {
-                            activeDiv.innerHTML = '';
-                            if (data.active.length > 0) {
-                                data.active.forEach(m => {
-                                    activeDiv.innerHTML += `
-                                        <div style="background:#2a2a2a; padding:15px; margin-bottom:10px; border-left:4px solid #dc3545; border-radius:5px;">
-                                            <strong>Court ${m.court}</strong> <span style="color:#aaa; font-size:12px;">(${m.category})</span><br>
-                                            <span style="font-size:16px;">${m.p1} 🆚 ${m.p2}</span>
-                                            <div style="color:#28a745; font-weight:bold; margin-top:5px;">Score: ${m.s1} - ${m.s2}</div>
-                                        </div>`;
-                                });
-                            } else {
-                                activeDiv.innerHTML = '<div style="padding:10px; color:#aaa;">No live matches right now.</div>';
-                            }
-                        }
-                    } catch(e) { console.log("Live Error:", e); }
+            // "?v=" add kiya hai taaki browser hamesha fresh data laaye (No Cache Issue)
+            fetch('/api/admin_data?v=' + new Date().getTime())
+            .then(r => r.json())
+            .then(data => {
+                
+                // 1. Navigation Lock
+                let navCard = document.getElementById('nav-buttons');
+                if (navCard && data.pending && data.pending.length > 0) {
+                    navCard.innerHTML = `
+                        <button class="btn-warning" style="flex:1; opacity:0.5;" disabled>⚙️ 1. CSV Setup (Locked)</button>
+                        <button class="btn-primary" style="flex:1; background:#17a2b8; opacity:0.5;" disabled>🏅 2. Seeding (Locked)</button>
+                        <button class="btn-primary" style="flex:1; background:#6c757d;" onclick="location.href='/draws'">📊 View Draws</button>
+                    `;
+                }
 
-                    try {
-                        const pendingDiv = document.getElementById('pending-matches-container');
-                        if (pendingDiv && data.pending) {
-                            pendingDiv.innerHTML = '';
-                            if (data.pending.length > 0) {
-                                data.pending.forEach(m => {
-                                    
-                                    let readyBadge = "";
-                                    let actionBtns = "";
+                // 2. Active Courts
+                let activeDiv = document.getElementById('active-matches-container');
+                let activeHtml = '';
+                if(data.active && data.active.length > 0) {
+                    data.active.forEach(m => {
+                        activeHtml += `<div class="court-item busy">
+                            <div><strong style="color:#ffca28">Court ${m.court}</strong> - ${m.category} <br>
+                            ${m.p1} <b>(${m.s1})</b> vs ${m.p2} <b>(${m.s2})</b></div>
+                            <button class="btn-warning" style="width:auto; padding:8px 15px; margin:0;" onclick="window.open('/court/${m.court}', '_blank')">Umpire Panel</button>
+                        </div>`;
+                    });
+                } else {
+                    activeHtml = '<p style="color:#666">No live matches right now.</p>';
+                }
+                activeDiv.innerHTML = activeHtml;
 
-                                    // 🚀 SMART UI: बैकएंड से लॉक का रीज़न सीधा प्रिंट करो
-                                    if (m.is_locked) {
-                                        readyBadge = `<span style="color:#ffca28; font-size:12px; font-weight:bold;">${m.lock_reason}</span>`;
-                                        actionBtns = `<button disabled style="background:#333; color:#aaa; padding:10px 15px; border-radius:5px; border:1px solid #555; font-weight:bold;">Match Locked 🔒</button>`;
-                                    } else {
-                                        readyBadge = m.is_ready ? `<span style="color:#28a745; font-size:12px; font-weight:bold;">● Ready</span>` : `<span style="color:#dc3545; font-size:12px; font-weight:bold;">● Resting</span>`;
-                                        let hStyle = m.status === 'Hold' ? 'background:#ffca28; color:#000;' : 'background:#444; color:#fff;';
-                                        let hText = m.status === 'Hold' ? '▶ Unhold' : '⏸ Hold';
-                                        let aState = (m.status === 'Hold' || !m.is_ready) ? 'disabled style="opacity:0.3;"' : '';
-
-                                        actionBtns = `
-                                            <button onclick="toggleHold(${m.id})" style="${hStyle} padding:10px 15px; border:none; border-radius:5px; margin-right:5px; font-weight:bold; cursor:pointer;">${hText}</button>
-                                            <button onclick="assignCourt(${m.id})" style="background:#007bff; color:#fff; padding:10px 15px; border:none; border-radius:5px; font-weight:bold; cursor:pointer;" ${aState}>Assign Court</button>
-                                        `;
-                                    }
-
-                                    let opacity = m.status === "Hold" ? "0.5" : "1";
-                                    pendingDiv.innerHTML += `
-                                        <div style="background:#1e1e1e; padding:15px; margin-bottom:10px; border-left:4px solid #007bff; border-radius:8px; opacity:${opacity}; display:flex; justify-content:space-between; align-items:center;">
-                                            <div>
-                                                <div style="font-size:12px; color:#aaa; margin-bottom:5px;">${m.category} &nbsp; ${readyBadge}</div>
-                                                <div style="font-size:15px; font-weight:bold;">${m.p1} 🆚 ${m.p2}</div>
-                                            </div>
-                                            <div>${actionBtns}</div>
-                                        </div>`;
-                                });
-                            } else {
-                                pendingDiv.innerHTML = '<div style="padding:10px; color:#aaa;">Queue is empty.</div>';
-                            }
-                        }
-                    } catch(e) { console.log("Pending Error:", e); }
-
-                });
-
-            fetch('/api/get_results').then(r=>r.json()).then(resData => {
-                try {
-                    const resDiv = document.getElementById('results-container');
-                    if (resDiv && resData) {
-                        resDiv.innerHTML = '';
-                        if (resData.length > 0) {
-                            resData.forEach(r => {
-                                resDiv.innerHTML += `<div style="padding:10px; border-bottom:1px solid #333;"><strong>${r.category}</strong>: ${r.winner_name} def. ${r.loser_name} <br><small style="color:#aaa;">Score: ${r.full_score}</small></div>`;
-                            });
+                // 3. Pending Queue
+                let pendingDiv = document.getElementById('pending-matches-container');
+                let pendingHtml = '';
+                if(data.pending && data.pending.length > 0) {
+                    data.pending.forEach(m => {
+                        let actionBtn = "";
+                        let holdBtn = "";
+                        
+                        if(m.status === 'Hold') {
+                            actionBtn = `<button class="btn-warning" style="width:auto; padding:5px 10px; margin:0;" onclick="toggleHold(${m.id})">Resume</button>`;
+                        } else if(m.is_ready && !m.is_locked) {
+                            actionBtn = `<button class="btn-primary" style="width:auto; padding:5px 10px; margin:0; background:#28a745;" onclick="assignCourt(${m.id})">Assign Court</button>`;
                         } else {
-                            resDiv.innerHTML = '<div style="padding:10px; color:#aaa;">No completed matches yet.</div>';
+                            let lockText = m.is_locked ? ('🔒 ' + m.lock_reason) : '⏳ Resting';
+                            actionBtn = `<span style="color:#dc3545; font-size:12px;"><b>${lockText}</b></span>`;
                         }
-                    }
-                } catch(e) { console.log("Results Error:", e); }
-            });
+
+                        let lockString = m.lock_reason || "";
+                        if(m.status !== 'Hold' && (!m.is_locked || lockString.includes('Resting'))) {
+                            holdBtn = `<button class="btn-warning" style="width:auto; padding:5px 10px; margin:0; background:#dc3545; color:white; border:none;" onclick="toggleHold(${m.id})">Hold</button>`;
+                        }
+
+                        let borderStyle = m.status === 'Hold' ? 'border-left-color:#ffca28; opacity:0.7;' : '';
+                        
+                        pendingHtml += `<div class="match-item" style="${borderStyle}">
+                            <div><small style="color:#17a2b8;">${m.category}</small><br>${m.p1} <b>vs</b> ${m.p2}</div>
+                            <div style="display:flex; gap:5px; align-items:center;">${holdBtn} ${actionBtn}</div>
+                        </div>`;
+                    });
+                } else {
+                    pendingHtml = '<p style="color:#666">Queue is empty.</p>';
+                }
+                pendingDiv.innerHTML = pendingHtml;
+            }).catch(err => console.error("Admin Error:", err));
+
+            // 4. Results
+            fetch('/api/get_results?v=' + new Date().getTime())
+            .then(r=>r.json()).then(resData => {
+                let resDiv = document.getElementById('results-container');
+                let resHtml = '';
+                if (resData && resData.length > 0) {
+                    resData.forEach(r => {
+                        resHtml += `<div style="padding:10px; border-bottom:1px solid #333;"><strong>${r.category}</strong>: ${r.winner_name} def. ${r.loser_name} <br><small style="color:#aaa;">Score: ${r.full_score}</small></div>`;
+                    });
+                } else {
+                    resHtml = '<div style="padding:10px; color:#aaa;">No completed matches yet.</div>';
+                }
+                resDiv.innerHTML = resHtml;
+            }).catch(e => console.log(e));
         }
 
-        function toggleHold(matchId) { fetch(`/api/toggle_hold/${matchId}`, { method: 'POST' }).then(res => res.json()).then(data => { if(data.success) loadAdminData(); }); }
+        // Functions
+        function toggleHold(matchId) { fetch(`/api/toggle_hold/${matchId}`, { method: 'POST' }).then(r=>r.json()).then(d=>{if(d.success)loadAdminData();}); }
         function assignCourt(matchId) {
-            const court = prompt("Enter Court Number (e.g., 1, 2, 3):");
+            let court = prompt("Enter Court Number (e.g., 1, 2, 3):");
             if (court) {
-                fetch(`/api/assign_court/${matchId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ court_number: parseInt(court) })
-                }).then(res => res.json()).then(data => { if (data.success) { loadAdminData(); } else { alert(data.error); } });
+                fetch(`/api/assign_court/${matchId}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({court_number:parseInt(court)}) })
+                .then(r=>r.json()).then(d=>{ if(d.success) loadAdminData(); else alert(d.error); });
             }
         }
 
-        window.onload = () => { loadAdminData(); setInterval(loadAdminData, 5000); };
+        // Auto Run
+        loadAdminData();
+        setInterval(loadAdminData, 3000);
     </script>
-
-
-
-
-
 </body>
 </html>
