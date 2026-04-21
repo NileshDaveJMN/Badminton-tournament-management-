@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTM Pro - Auto-Scaling Bracket</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #121212; color: #fff; margin: 0; padding: 10px; }
+        .header { text-align: center; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .header h1 { color: #ffca28; margin: 0; font-size: 20px; }
+        
+        .controls { display: flex; justify-content: center; gap: 5px; margin: 15px 0; }
+        select, button { padding: 6px 10px; border-radius: 4px; border: none; font-size: 13px; font-weight: bold; background: #333; color: white; cursor: pointer; }
+        button { background: #007bff; }
+
+        /* 🌳 DYNAMIC ALIGNMENT ENGINE */
+        .bracket-container { 
+            display: flex; flex-direction: row; align-items: flex-start; 
+            overflow-x: auto; padding: 20px 10px;
+            /* Height will be set by JavaScript */
+        }
+
+        .round { 
+            display: flex; flex-direction: column; 
+            min-width: 170px; margin-right: 35px; 
+            /* Height will be set by JavaScript */
+        }
+        
+        .round-title { 
+            text-align: center; font-weight: bold; color: #ffca28; background: #1e1e1e; 
+            padding: 5px; border-radius: 3px; margin-bottom: 10px; font-size: 12px; 
+            border: 1px solid #444; text-transform: uppercase; flex-shrink: 0;
+        }
+
+        .matches-list {
+            display: flex; flex-direction: column; justify-content: space-around; flex-grow: 1;
+        }
+
+        .match { 
+            background: #1a1a1a; border: 1px solid #333; border-radius: 5px; 
+            padding: 6px; position: relative; 
+            height: 50px; /* 🚀 Fixed Box Size */
+            width: 100%; box-sizing: border-box;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        
+        .match-no { font-size: 8px; color: #555; position: absolute; top: 2px; right: 4px; }
+        .player { font-size: 12px; white-space: nowrap; overflow: hidden; display: flex; justify-content: space-between; align-items: baseline; }
+        .player.winner { color: #28a745; font-weight: bold; }
+        .player.loser { color: #666; text-decoration: line-through; }
+        .score-inline { font-size: 9px; color: #ffca28; font-weight: normal; margin-left: 4px; }
+
+        @media print {
+            body { background-color: #fff !important; color: #000 !important; }
+            .header h1, .match-no { color: #000 !important; }
+            .controls { display: none !important; }
+            .round-title { color: #000 !important; background: #eee !important; border: 1px solid #000 !important; }
+            .match { background: #fff !important; border: 1px solid #000 !important; height: 50px !important; }
+            .player.winner { color: #000 !important; }
+            .score-inline { color: #000 !important; font-weight: bold; font-size: 10px !important; }
+            @page { size: landscape; margin: 5mm; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header"><h1>Tournament Bracket View</h1></div>
+
+    <div class="controls">
+        <select id="cat-select"></select>
+        <select id="draw-type">
+            <option value="Main">Main Draw</option>
+            <option value="Qualification">Qualification Draw</option>
+        </select>
+        <button onclick="loadBracket()">Load Tree</button>
+        <button onclick="window.print()" style="background:#28a745;">🖨️ Print PDF</button>
+    </div>
+
+    <div class="bracket-container" id="bracket-area"></div>
+
+    <script>
+        fetch('/api/get_categories').then(r => r.json()).then(cats => {
+            let sel = document.getElementById('cat-select');
+            cats.forEach(c => sel.innerHTML += `<option value="${c}">${c}</option>`);
+        });
+
+        function loadBracket() {
+            let cat = document.getElementById('cat-select').value;
+            let type = document.getElementById('draw-type').value;
+            let area = document.getElementById('bracket-area');
+            area.innerHTML = '<p style="color:#ffca28; text-align:center; width:100%;">⏳ Loading...</p>';
+
+            fetch(`/api/get_bracket/${cat}/${type}?v=` + new Date().getTime())
+                .then(r => r.json())
+                .then(rounds => {
+                    area.innerHTML = '';
+                    if(!rounds || rounds.length === 0) {
+                        area.innerHTML = '<p style="color:#dc3545; text-align:center; width:100%;">No matches found.</p>';
+                        return;
+                    }
+
+                    // 🚀 STEP 1: CALCULATE DYNAMIC HEIGHT
+                    // Round 1 matches ke hisaab se height decide karein
+                    const r1Count = rounds[0].matches.length;
+                    const calculatedHeight = Math.max(500, r1Count * 70); // Minimum 500px, otherwise 70px per match
+
+                    const totalRounds = rounds.length;
+
+                    rounds.forEach((rData, index) => {
+                        let roundDiv = document.createElement('div');
+                        roundDiv.className = 'round';
+                        
+                        // Apply Dynamic Height to each round column
+                        roundDiv.style.height = calculatedHeight + "px";
+
+                        let diff = totalRounds - 1 - index; 
+                        let roundTitle = (diff === 0) ? "Final" : (diff === 1) ? "SF" : (diff === 2) ? "QF" : (diff === 3) ? "Pre QF" : "Round " + rData.round;
+                        
+                        roundDiv.innerHTML = `<div class="round-title">${roundTitle}</div>`;
+                        
+                        let matchesWrapper = document.createElement('div');
+                        matchesWrapper.className = 'matches-list';
+
+                        rData.matches.forEach(m => {
+                            let p1Class = "player", p2Class = "player";
+                            let s1 = "", s2 = "";
+                            let isBye = m.p1.includes('Bye') || m.p2.includes('Bye');
+
+                            if(m.status === "Completed") {
+                                if(m.w_id === m.p1_id) { 
+                                    p1Class += " winner"; p2Class += " loser"; 
+                                    if(!isBye) s1 = `<span class="score-inline">(${m.full_score})</span>`;
+                                } else { 
+                                    p2Class += " winner"; p1Class += " loser"; 
+                                    if(!isBye) s2 = `<span class="score-inline">(${m.full_score})</span>`;
+                                }
+                            }
+
+                            matchesWrapper.innerHTML += `
+                                <div class="match">
+                                    <div class="match-no">#${m.m_no}</div>
+                                    <div class="${p1Class}"><span>${m.p1}</span>${s1}</div>
+                                    <div class="${p2Class}"><span>${m.p2}</span>${s2}</div>
+                                </div>`;
+                        });
+                        roundDiv.appendChild(matchesWrapper);
+                        area.appendChild(roundDiv);
+                    });
+                });
+        }
+    </script>
+</body>
+</html>
