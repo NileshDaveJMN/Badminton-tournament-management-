@@ -43,11 +43,12 @@
 
         <input type="file" id="csvFile" accept=".csv">
         <button class="btn-upload" onclick="uploadCSV()">🚀 Upload & Process Entries</button>
-        <div id="statusMsg" style="margin-top:15px; font-weight:bold; color:#ffca28; text-align:center;"></div>
-    </div>
+        
+        <button id="btn-go-seeding" onclick="window.location.href='/seeding'" style="background:#28a745; color:white; border:none; padding:12px; width:100%; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; margin-top:15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            ➡️ Next Step: M&Q Seeding
+        </button>
 
-    <div style="text-align:center; margin-top:30px;">
-        <a href="/admin" style="color:#007bff; text-decoration:none; font-size:18px;">➡️ Go to Live Admin Controller</a>
+        <div id="statusMsg" style="margin-top:15px; font-weight:bold; color:#ffca28; text-align:center;"></div>
     </div>
 
     <script>
